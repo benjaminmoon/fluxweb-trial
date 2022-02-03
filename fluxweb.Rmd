@@ -1,0 +1,172 @@
+---
+title: "Trialling the *fluxweb* package"
+author: "Ben Moon"
+date: 2022-02-03
+...
+
+# Environment
+
+I use *renv* to maintain a reproducible environment.
+
+```{r initialize_renv}
+renv::init()
+```
+
+ACtivating the *renv* project should install the required packages that can then be loaded as usual.
+
+```{r load_packages}
+library(fluxweb)
+library(ggplot2)
+library(igraph)
+library(purrr)
+library(tidyr)
+```
+
+# Using *fluxweb* #
+
+*fluxweb* requires several data sets:
+
+* a matrix of trophic interactions
+* a vector of body masses
+* a vector of total biomass
+* a vector of the organism type.
+
+There is also a vector of metabolic types that is not required, but can be modified to increase precision.
+
+
+## A random simulation ##
+
+### The initial data ###
+
+
+I'll start with a randomly generated example, as this is more fun.
+
+```{r random_matrix_generation, eval = FALSE}
+random_trophic_interactions <-
+  matrix(sample(c(0, 1), size = 100, replace = TRUE), nrow = 10)
+random_trophic_interactions[upper.tri(random_trophic_interactions, diag = TRUE)] <- 0
+saveRDS(random_trophic_interactions, file = "random_trophic_interactions.rds")
+random_trophic_interactions
+#       [,1] [,2] [,3] [,4] [,5] [,6] [,7] [,8] [,9] [,10]
+#  [1,]    0    0    0    0    0    0    0    0    0     0
+#  [2,]    0    0    0    0    0    0    0    0    0     0
+#  [3,]    1    1    0    0    0    0    0    0    0     0
+#  [4,]    0    0    1    0    0    0    0    0    0     0
+#  [5,]    0    1    1    0    0    0    0    0    0     0
+#  [6,]    0    0    1    0    1    0    0    0    0     0
+#  [7,]    0    1    0    0    1    0    0    0    0     0
+#  [8,]    0    1    1    1    1    0    0    0    0     0
+#  [9,]    0    0    1    0    1    0    1    1    0     0
+# [10,]    0    0    0    1    0    1    1    0    0     0
+```
+
+Here is the matrix I generated, use this to keep it consistent and easier for generating the relative masses below. Groups 9 and 10 are at the bototm of the food web, and 5, 2, and 1 are at the top.
+
+```{r random_matrix}
+random_trophic_interactions <- readRDS("random_trophic_interactions.rds")
+random_web_layout <-
+  matrix(c(2, 1, 2, 1, 3, 3, 2, 1, 1, 3,
+           4, 3, 3, 2, 2, 1, 2, 1, 0, 0), ncol = 2)
+```
+
+For each of the ten trophic groups/species, I create some random body masses but add some patterning so that the prey tends to be smaller than its predators. Similarly for the biomass of each group.
+
+```{r random_masses, echo = FALSE options}
+random_body_masses <- c(5000, 1000, 1000, 500, 1000, 100, 500, 100, 1, 10)
+random_biomasses <- c(10, 10, 5, 50, 10, 5, 10, 50, 100, 100) * 100
+```
+
+Finally, I include the organism type in a vector.
+
+```{r random_organism_type}
+random_organism_type <- c(rep("animal", 8), rep("plant", 2))
+random_metabolic_type <- c(rep("endo.vert", 2), rep("ecto.vert", 3), rep("inv", 5))
+```
+
+I show the layout of this using *igraph* with node sizes scaled to biomass.
+
+```{r igraph_simulated_example}
+plot(graph_from_adjacency_matrix(random_trophic_interactions, mode="directed"), layout = random_web_layout, vertex.size = random_biomasses * 0.01)
+```
+
+### Calculating efficiencies and losses ###
+
+The losses and the efficiencies are the values that fluxing requires to stabilize the network. *Losses* are the energy spent on metabolisms (= metabolic rate) that is thus lost to organisms further up the food chain. *Efficiencies* incorporates the efficiency of eating and how much energy is lost from that.
+
+Metabolic rate \(X\) is estimated with the exponential relationship
+
+\[ X = a M^{b} \]
+
+where \(M\) is the body mass. The following values are used for different metabolic groups.
+
+```{r metabolic_types_losses}
+metabolic_losses <-
+  data.frame(
+    ecto.vert = c(18.18, -0.29),
+    endo.vert = c(19.5,  -0.29),
+    inv       = c(18.18, -0.29)
+  )
+
+random_losses <-
+  list(mass = random_body_masses, metabolism = random_metabolic_type) |>
+  pmap_dbl(
+    function (mass, metabolism, rates) {
+      rates[1, metabolism] * mass ^ rates[2, metabolism]
+    },
+    rates = metabolic_losses
+  )
+```
+
+Feeding efficiencies are similarly included using the following values.
+
+```{r random_efficiencies}
+organisms_efficiency <-
+  data.frame(animal = 0.906, plant  = 0.545, detritus = 0.158)
+random_efficiencies <- random_organism_type |>
+  map_dbl(function (type, efficiency) { efficiency[1, type] }, efficiency = organisms_efficiency )
+```
+
+### Fluxing ###
+
+I calculate the fluxes through the web with the `fluxing` function.
+
+```{r fluxing}
+random_fluxes <- fluxing(random_trophic_interactions, random_biomasses, random_losses, random_efficiencies)
+```
+
+It's as simple as that.
+
+### Fluxes to function ###
+
+The vignette in *fluxweb* adds the next step of converting the fluxes into ecosystem function. The fluxes calculated are the losses of energy from the resource nodes, i.e. the energy that doesn't make it to the next step in the chain.
+
+```{r identify_functions}
+basals <- colSums(random_fluxes) == 0
+plants <- basals
+
+random_functions <- data.frame(
+  herbivory = sum(rowSums(random_fluxes[plants, ])),
+  carnivory = sum(rowSums(random_fluxes[!basals, ])),
+  total     = sum(random_fluxes)
+)
+```
+
+The functions are identified as the sums of the outgoing fluxes for the consumed items. For example, herbivory is the flux value outgoing from plants.
+
+```{r random_plot_fluxes}
+random_functions |>
+  pivot_longer(everything(), names_to = "Function", values_to = "Fluxes") |>
+  ggplot(aes(x = Function, y = Fluxes)) +
+    geom_col()
+```
+
+### Food web stability ###
+
+Calculating the stability value is not in the vignette, but I've gathered this from Sander et al. (2021, https://doi.org/10.1126/science.abf5787). I estimate the stability based on eigenvalues for the food web, the more negative this value the more stable the food web. This also requires growth rates, which apparently applies onto to invertebrate groups; taxa 9, 10.
+
+```{r random_stability}
+random_growth_rates <- c(rep(NA, 8), rep(0.5, 2))
+random_stability <- stability.value(random_fluxes, random_biomasses, random_losses, random_efficiencies, random_growth_rates, ef.level = "pred")
+```
+
+This value is only really useful when you have things to compare it to.
