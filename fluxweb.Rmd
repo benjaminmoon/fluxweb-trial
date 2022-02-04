@@ -172,7 +172,11 @@ random_growth_rates <- c(rep(NA, 8), rep(0.5, 2))
 random_stability <- stability.value(random_fluxes, random_biomasses, random_losses, random_efficiencies, random_growth_rates, ef.level = "pred")
 ```
 
-This value is only really useful when you have things to compare it to.
+This value is only really useful when you have things to compare it to, but I also check for the multiplicative value that is smallest but ensures a stable network.
+
+```{r random_make_stability}
+random_make_stability <- make.stability(random_fluxes, random_biomasses, random_losses, random_efficiencies, random_growth_rates)
+```
 
 
 ## A Pokémon-based example ##
