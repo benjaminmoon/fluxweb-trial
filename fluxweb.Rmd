@@ -2,7 +2,7 @@
 title: "Trialling the *fluxweb* package"
 author: "Ben Moon"
 date: 2022-02-03
-...
+---
 
 # Environment
 
@@ -12,7 +12,7 @@ I use *renv* to maintain a reproducible environment.
 renv::init()
 ```
 
-ACtivating the *renv* project should install the required packages that can then be loaded as usual.
+Activating the *renv* project should install the required packages that can then be loaded as usual.
 
 ```{r load_packages}
 library(dplyr)
@@ -118,6 +118,7 @@ random_losses <-
     },
     rates = metabolic_losses
   )
+random_losses
 ```
 
 Feeding efficiencies are similarly included using the following values.
@@ -127,6 +128,7 @@ organisms_efficiency <-
   data.frame(animal = 0.906, plant  = 0.545, detritus = 0.158)
 random_efficiencies <- random_organism_type |>
   map_dbl(function (type, efficiency) { efficiency[1, type] }, efficiency = organisms_efficiency )
+random_efficiencies
 ```
 
 ### Fluxing ###
@@ -135,6 +137,7 @@ I calculate the fluxes through the web with the `fluxing` function.
 
 ```{r fluxing}
 random_fluxes <- fluxing(random_trophic_interactions, random_biomasses, random_losses, random_efficiencies)
+random_fluxes
 ```
 
 It's as simple as that.
@@ -152,6 +155,7 @@ random_functions <- data.frame(
   carnivory = sum(rowSums(random_fluxes[!basals, ])),
   total     = sum(random_fluxes)
 )
+random_functions
 ```
 
 The functions are identified as the sums of the outgoing fluxes for the consumed items. For example, herbivory is the flux value outgoing from plants.
@@ -170,12 +174,14 @@ Calculating the stability value is not in the vignette, but I've gathered this f
 ```{r random_stability}
 random_growth_rates <- c(rep(NA, 8), rep(0.5, 2))
 random_stability <- stability.value(random_fluxes, random_biomasses, random_losses, random_efficiencies, random_growth_rates, ef.level = "pred")
+random_stability
 ```
 
 This value is only really useful when you have things to compare it to, but I also check for the multiplicative value that is smallest but ensures a stable network.
 
 ```{r random_make_stability}
 random_make_stability <- make.stability(random_fluxes, random_biomasses, random_losses, random_efficiencies, random_growth_rates)
+random_make_stability
 ```
 
 
@@ -194,6 +200,8 @@ pokemon_trophic_interactions <-
   )
 pokemon_trophic_network <- graph.data.frame(pokemon_trophic_interactions)
 pokemon_trophic_matrix <- as.matrix(get.adjacency(pokemon_trophic_network))
+pokemon_trophic_matrix
+plot(pokemon_trophic_network)
 ```
 
 And now to build up the biomasses. I've decided to add some variation with simulation. To do this I simulate walking through the long grass for one hour (at one-step-per-second) and encountering Pokémon (then immediately fleeing) as I go using the overall encounter rates (20/255 by default) and relative rates between Pokémon species. I also take the respective body masses and use a normal distribution to 'encounter' a variety of Pikeman sizes.
@@ -207,6 +215,7 @@ route_8_pokemon <- data.frame(
   adjusted_encounter_rate = encounter_rate / sum(encounter_rate),
   mass = c(1.8, 30, 3.5, 6.9, 12.0, 9.9, 5.5, 4.2, 28.0, 19.0, 19.5, 56.5) * 1000
 )
+route_8_pokemon
 
 encounter_simulation <-
   imap_dfr(1:3600, function(.x, .y) {
@@ -218,6 +227,7 @@ encounter_simulation <-
       data.frame(pokemon = found_pokemon, mass = pokemon_mass)
     }
 })
+encounter_simulation
 ```
 
 I show the numbers and ranges of Pikeman encountered here.
@@ -255,6 +265,7 @@ pokemon_organism_type <- c(rep("animal", 12), rep("plant", 2))
 pokemon_metabolic_type <- c(rep("endo.vert", 12), rep("inv", 2))
 pokemon_metabolic_type[c(4, 11, 12)] <- "ecto.vert"
 pokemon_metabolic_type[7] <- "inv"
+pokemon_metabolic_type
 ```
 
 The last things to add are the amounts of grass and berries found. Grass is in 49 squares, so with an estimate of the amount per-square I can add that in. Berries are another random encounter, but I'll include that like grass and they may be scattered and found more often than just on trees.
@@ -266,11 +277,13 @@ plant_body_mass <- c(10, 5)
 summ_plant_biomass <- plant_biomass |>
   group_by(pokemon) |>
   summarize(biomass = mean(mass))
+summ_plant_biomass
 
 pokemon_body_mass <- pokemon_body_mass |>
   bind_rows(tibble(pokemon = c("Grass", "Berries"), mass = plant_body_mass))
 pokemon_biomass <- encountered_biomass |>
   bind_rows(summ_plant_biomass)
+pokemon_biomass
 ```
 
 (Grass value from <https://www.researchgate.net/figure/biomass-production-in-grams-per-square-meter-separated-by-sites-dominated-by-grass-or_tbl2_233861647>, berries value from <https://www.researchgate.net/publication/317780169_Berry_production_drives_bottom_-_up_effects_on_body_mass_and_reproductive_success_in_an_omnivore>.)
@@ -284,6 +297,7 @@ pokemon_losses <-
     },
     rates = metabolic_losses
   )
+pokemon_losses
 ```
 
 Feeding efficiencies are similarly included using the following values.
@@ -293,12 +307,14 @@ organisms_efficiency <-
   data.frame(animal = 0.906, plant  = 0.545, detritus = 0.158)
 pokemon_efficiencies <- pokemon_organism_type |>
   map_dbl(function (type, efficiency) { efficiency[1, type] }, efficiency = organisms_efficiency )
+pokemon_efficiencies
 ```
 
 And finally resolve the fluxes within the web.
 
 ```{r pokemon_fluxes}
 pokemon_fluxes <- fluxing(pokemon_trophic_matrix, pokemon_biomass$biomass, pokemon_losses, pokemon_efficiencies)
+pokemon_fluxes
 ```
 
 Let's see what this looks like in out network, scaling the edges by the flux size.
@@ -322,6 +338,7 @@ pokemon_functions <- data.frame(
   carnivory = sum(rowSums(pokemon_fluxes[!basals, ])),
   total     = sum(pokemon_fluxes)
 )
+pokemon_functions
 ```
 
 The functions are identified as the sums of the outgoing fluxes for the consumed items. For example, herbivory is the flux value outgoing from plants.
@@ -333,8 +350,15 @@ pokemon_functions |>
     geom_col()
 ```
 
-```{r random_stability}
-pokemon_growth_rates <- c(rep(NA, 12), rep(0.5, 2))
-pokemon_growth_rates[7] <- 0.5
+```{r pokemon_stability}
+pokemon_growth_rates <- c(rep(NA, 14))
+pokemon_growth_rates[c(9, 10)] <- 0.5
 pokemon_stability <- stability.value(pokemon_fluxes, pokemon_biomass$biomass, pokemon_losses, pokemon_efficiencies, pokemon_growth_rates, ef.level = "pred")
 ```
+
+```{r pokemon_make_stability}
+pokemon_make_stability <- make.stability(pokemon_fluxes, pokemon_biomass$biomass, pokemon_losses, pokemon_efficiencies, pokemon_growth_rates)
+pokemon_make_stability
+random_make_stability
+```
+
